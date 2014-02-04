@@ -24,6 +24,30 @@ The tradeoff is same key in different datastructures, for example, name string c
 
 store = Hash.new {}
 
+#@function
+# used by setbit and getbit.
+def changeBit (res,position,newval=false)
+  STDOUT.puts newval
+  STDOUT.puts 'index less than total length...'
+  #bit value is valid.
+  byte = (position.to_f/8).floor
+  index = (position%8).to_i
+  STDOUT.puts 'byte:' + byte.to_s + 'index:' + index.to_s
+  i = 0
+  r = 0
+  res.each_byte { |b| 
+    if byte == i
+      r = b[index]
+      if(newval != false)
+        #b[index] = newval
+      end
+      break
+    end
+    i = i + 1
+  }
+return r
+end
+
 ### Try loading the file
 STDOUT.puts 'Trying to populate db with temp/cache.json .....'
 
@@ -99,37 +123,38 @@ loop do
         # GETBIT key offset
         when "GETBIT","getbit"
           #convert the value binary
-          if (res = sstore[command[1]]) != nil
-            STDOUT.puts res.length*8
-            STDOUT.puts (command[2].to_f/8)
-            STDOUT.puts command[2].to_f.is_a?(String)
-            d = res.length*8
-            if command[2].to_i < res.length*8
-              STDOUT.puts 'check!'
-              #bit value is valid.
-              byte = (command[2].to_f/8).floor
-              index = command[2]%8
-              STDOUT.puts 'byte:' + byte.to_s
-              STDOUT.puts 'index:' + index.to_s
-              i = 0
-              res.each_byte { |b| 
-                STDOUT.puts b
-                if byte == i
-                  #r = b[index]
-                  puts '-'
-                end
-                i = i + 1
-              }
-              connection.puts r + "\r\n"
+          if (res = store[command[1]]) != nil
+            if res[:type] == "string"
+              res = res[:value]
+              if command[2].to_i < res.length*8
+                r = changeBit res,command[2]
+                connection.puts r.to_s + "\r\n"
+              else
+                connection.puts "integer 0 \r\n"
+              end
             else
-              connection.puts 'integer 0'
+              connection.puts "ERR" + command[1] + "is a different datatype. \r\n"
             end
           else
             connection.puts "0 \r\n"
           end
 
         when "SETBIT","setbit"
-          STDOUT.puts "Received: setbit"
+          if (res = store[command[1]]) != nil
+            if res[:type] == "string"
+              res = res[:value]
+              if command[2].to_i < res.length*8
+                r = changeBit res,command[2],command[3]
+                connection.puts r.to_s + "\r\n"
+              else
+                connection.puts "integer 0 \r\n"
+              end
+            else
+              connection.puts "ERR" + command[1] + "is a different datatype. \r\n"
+            end
+          else
+            connection.puts "0 \r\n"
+          end
 
         
         ### Sorted Set commands.
@@ -138,21 +163,21 @@ loop do
           if store[command[1]] == nil
             store[command[1]] = {:type => "set",:value => {}}
           elsif store[command[1]][:type] != "set"
-            connection.puts "ERR different datatype \r\n"
+            connection.puts "ERR" + command[1] + "is a different datatype. \r\n"
             error = true
           end        
           if !error  
             store[command[1]][:value][command[3]] = command[2].to_f
             connection.puts (store[command[1]][:value].length - 1).to_s + "\r\n"
           end
-          
+
         when "zcard","ZCARD"
           if (res = store[command[1]]) != nil
             if res[:type] == "set" 
               STDOUT.puts res
               connection.puts res[:value].length.to_s + "\r\n"
             elsif 
-              connection.puts "ERR different datatype \r\n"
+              connection.puts "ERR" + command[1] + "is a different datatype. \r\n"
             end
           else
             connection.puts "(nil) \r\n"
@@ -170,7 +195,7 @@ loop do
               }
               connection.puts inc.to_s + "\r\n"
             else 
-              connection.puts "ERR different datatype \r\n"
+              connection.puts "ERR" + command[1] + "is a different datatype. \r\n"
             end
           else
             connection.puts "(nil) \r\n"
@@ -187,3 +212,5 @@ loop do
       end
   end
 end
+
+
